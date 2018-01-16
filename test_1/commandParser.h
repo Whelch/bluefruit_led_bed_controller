@@ -9,6 +9,8 @@ void processPingPongCommand(State *state);
 
 void processRainbowCommand(State *state);
 
+void processColorCommand(State *state);
+
 void processStatusCommand(State *state);
 
 void processSaveCommand(State *state);

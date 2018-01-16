@@ -339,6 +339,8 @@ void processBLEBuffer() {
         processStatusCommand(&state);
       } else if(token.equals("r") || token.equals("rainbow")) {
         processRainbowCommand(&state);
+      } else if(token.equals("c") || token.equals("color")) {
+        processSaveCommand(&state);
       } else if(token.equals("s") || token.equals("save")) {
         processSaveCommand(&state);
       } else if(token.equals("l") || token.equals("load")) {
@@ -350,6 +352,8 @@ void processBLEBuffer() {
         state.ble.println(F("List of available commands:"));
         state.ble.println(F("- Brightness"));
         state.ble.println(F("- PingPong"));
+        state.ble.println(F("- Rainbow"));
+        state.ble.println(F("- Color"));
         state.ble.println(F("- Status"));
         state.ble.println(F("- Save"));
         state.ble.println(F("- Load"));

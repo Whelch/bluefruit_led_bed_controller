@@ -215,6 +215,57 @@ void processRainbowCommand(State *state) {
   }
 }
 
+void processColorCommand(State *state) {
+  boolean failed = true;
+  if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
+    if (token.equals("r") || token.equals("red")) {
+      failed = false;
+      state->color = Color(255, 0, 0);
+    } else if(token.equals("y") || token.equals("yellow")) {
+      failed = false;
+      state->color = Color(255, 255, 0);
+    } else if(token.equals("g") || token.equals("green")) {
+      failed = false;
+      state->color = Color(0, 255, 0);
+    } else if(token.equals("c") || token.equals("t") || token.equals("cyan") || token.equals("teal")) {
+      failed = false;
+      state->color = Color(0, 255, 255);
+    } else if(token.equals("blue") || token.equals("blue")) {
+      failed = false;
+      state->color = Color(0, 0, 255);
+    } else if(token.equals("p") || token.equals("m") || token.equals("purple") || token.equals("magenta")) {
+      failed = false;
+      state->color = Color(255, 0, 255);
+    } else if(token.equals("w") || token.equals("white")) {
+      failed = false;
+      state->color = Color(255, 255, 255);
+    }
+
+    if(!failed) {
+      state->rainbow.active = false;
+      for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+        for(uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
+          state->stripColors[stripIndex][ledIndex] = state->color;
+          state->strips[stripIndex].setPixelColor(ledIndex, state->stripColors[stripIndex][ledIndex]);
+        }
+        state->stripDirty[stripIndex] = true;
+      }
+    }
+  }
+
+  if (failed) {
+    state->ble.println(F("--==[color]==--"));
+    state->ble.println(F("Available colors"));
+    state->ble.println(F("Red"));
+    state->ble.println(F("Yellow"));
+    state->ble.println(F("Green"));
+    state->ble.println(F("Cyan"));
+    state->ble.println(F("Blue"));
+    state->ble.println(F("Purple"));
+    state->ble.println(F("White"));
+  }
+}
+
 void processStatusCommand(State *state) {
   state->ble.println(F("--==[status]==--"));
   state->ble.print(F("Color : ")); printColorToBle(state->color, &(state->ble)); state->ble.println();
