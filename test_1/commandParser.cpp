@@ -11,14 +11,18 @@ void processBrightnessCommand(State *state) {
     if (token.equals("f") || token.equals("flux") || token.equals("fluxuation")) {
       uint8_t targetBrightness;
       if (token = strtok(NULL, COMMAND_SEPARATOR)) {
+        Serial.println("token Found 1");
         if (uint16_t otherBrightness = token.toInt()) {
+          Serial.println("otherBrightness");
           if (otherBrightness > UINT8_MAX) {
             state->ble.println(F("Invalid first parameter to the [fluxuation] argument."));
             state->ble.println(F("Expected a value in the range [0-255]."));
             break;
           } else {
+            Serial.println("targetBrightness");
             targetBrightness = otherBrightness;
             if (token = strtok(NULL, COMMAND_SEPARATOR)) {
+              Serial.println("token 2");
               if (uint32_t period = token.toInt()) {
                 if (period > UINT16_MAX) {
                   state->ble.println(F("Invalid second parameter to the [fluxuation] argument."));
@@ -109,7 +113,7 @@ void processPingPongCommand(State *state) {
   Easing easing = linear;
   boolean dark = false;
   uint8_t spread;
-  uint16_t duration;
+  uint32_t duration;
   while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
     if (token.equals("e") || token.equals(F("ease")) || token.equals(F("easing"))) {
       if (token = strtok(NULL, COMMAND_SEPARATOR)) {
@@ -128,7 +132,7 @@ void processPingPongCommand(State *state) {
       }
     } else if(token.equals("d") || token.equals("dark")) {
       if(!failed) {
-      state->pingpong.dark = true;
+        state->pingpong.dark = true;
       }
       dark = true;
     } else {
@@ -137,7 +141,7 @@ void processPingPongCommand(State *state) {
         if (number <= 8) {
           spread = number;
         } else if (number >= 1000 && number <= UINT16_MAX) {
-          duration = number * 1000;
+          duration = number;
         }
   
         if (spread && duration) {
@@ -147,7 +151,6 @@ void processPingPongCommand(State *state) {
           state->pingpong.pixel = spread;
           state->pingpong.duration = duration * 1000;
           state->pingpong.directionUp = false;
-          state->pingpong.dark = false;
           state->pingpong.colorFalloff = new uint32_t[spread];
           state->pingpong.easing = easing;
           state->pingpong.dark = dark;

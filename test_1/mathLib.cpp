@@ -60,5 +60,6 @@ double ease(Easing easing, double input) {
     case linear: return easing_linear(input);
     case cosine: return easing_cosine(input);
     case exponential: return easing_exponential(input);
+    case quartic: return easing_quartic(input);
   }
 }
