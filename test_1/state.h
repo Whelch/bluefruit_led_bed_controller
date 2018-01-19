@@ -17,6 +17,52 @@ struct BrightnessFlux {
   Easing easing;
 };
 
+struct Color {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+  uint8_t o;
+
+  Color() {
+    r = 0;
+    g = 0;
+    b = 0;
+    o = 0;
+  }
+
+  Color(uint8_t red, uint8_t green, uint8_t blue) {
+    r = red;
+    g = green;
+    b = blue;
+    o = 0;
+  }
+  
+  Color(uint8_t red, uint8_t green, uint8_t blue, uint8_t opacity) {
+    r = red;
+    g = green;
+    b = blue;
+    o = opacity;
+  }
+
+  void setColor(Color other) {
+    r = other.r;
+    g = other.g;
+    b = other.b;
+  }
+
+  void setColor(uint8_t red, uint8_t green, uint8_t blue) {
+    r = red;
+    g = green;
+    b = blue;
+  }
+
+  uint32_t getConverted() {
+    return ((((uint32_t)r * (o + 1) << 8) & 0xFF0000) |
+            (((uint32_t)g * (o + 1)) & 0xFF00) |
+            (((uint32_t)b * (o + 1) >> 8) & 0xFF));
+  }
+};
+
 struct PingPong {
   boolean active;
   uint8_t pixel; // The "from" brightness.
@@ -24,7 +70,7 @@ struct PingPong {
   uint32_t duration;
   uint32_t currentTime;
   boolean directionUp;
-  uint32_t *colorFalloff;
+  uint8_t *falloff;
   boolean dark;
   Easing easing;
 };
@@ -37,8 +83,6 @@ struct Rainbow {
 };
 
 struct SaveState {
-  uint32_t color;
-  uint8_t brightness = 150;
   BrightnessFlux brightFlux;
   PingPong pingpong;
   Rainbow rainbow;
@@ -59,17 +103,13 @@ struct State {
     Adafruit_NeoPixel(RIGHT_RAIL_LEDS, RIGHT_RAIL_PIN, NEO_GRBW + NEO_KHZ800),
   };
   
-  uint32_t *stripColors[NUM_STRIPS];
+  Color *stripColors[NUM_STRIPS];
   
   unsigned long lastMicros;
   uint16_t deltaMicros = 0;
   unsigned long lostMicros = 0;
   unsigned long numCalls = 0;
   unsigned long fpsMicros = 0;
-
-  uint32_t color; // Last assigned color from the controller.
-  
-  uint8_t brightness = 150;
   
   BrightnessFlux brightFlux;
   PingPong pingpong;

@@ -15,8 +15,6 @@ enum Easing: uint8_t {
 
 long lerp(double percent, long start, long end);
 
-uint32_t Color(uint8_t r, uint8_t g, uint8_t b);
-
 void printColorToBle(uint32_t color, Adafruit_BluefruitLE_SPI* ble);
 
 double easing_cosine(double input);

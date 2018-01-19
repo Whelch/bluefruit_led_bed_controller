@@ -11,14 +11,12 @@ void processRainbowCommand(State *state);
 
 void processColorCommand(State *state);
 
-void processStatusCommand(State *state);
+void processInfoCommand(State *state);
 
 void processSaveCommand(State *state);
 
 void processLoadCommand(State *state);
 
 void processEasingCommand(State *state);
-
-void initializePingPongMode(State *state);
 
 #endif

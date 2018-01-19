@@ -9,10 +9,6 @@ long lerp(double percent, long start, long end) {
   return start + (long)((end-start)*percent);
 }
 
-uint32_t Color(uint8_t r, uint8_t g, uint8_t b) {
-  return ((uint32_t)r << 16) | ((uint32_t)g <<  8) | b;
-}
-
 void printColorToBle(uint32_t color, Adafruit_BluefruitLE_SPI* ble) {
   uint8_t r = color >> 16;
   uint8_t g = color >> 8;

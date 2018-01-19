@@ -22,7 +22,6 @@ void error(const __FlashStringHelper * err) {
 }
 
 void setup() {
-  state.color = Color(255, 255, 255);
   initializeBLE();
   initializeLEDs();
   initializeRF();
@@ -32,52 +31,26 @@ void setup() {
 void initializeBLE() {
   Serial.begin(115200);
 
-  /* Initialise the module */
-  Serial.print(F("Initialising the Bluefruit LE module: "));
-  if(!state.ble.begin(VERBOSE_MODE)) {
-    error(F("Couldn't find Bluefruit, make sure it's in CommanD mode & check wiring?"));
-  }
-  Serial.println( F("OK!") );
+  state.ble.begin(VERBOSE_MODE);
 
   if(FACTORYRESET_ENABLE) {
-    /* Perform a factory reset to make sure everything is in a known state */
-    Serial.println(F("Performing a factory reset: "));
-    if ( ! state.ble.factoryReset() ){
-      error(F("Couldn't factory reset"));
-    }
+    state.ble.factoryReset();
   }
 
   state.ble.sendCommandCheckOK("AT+GAPDEVNAME=Bed Controller");
-
-  /* Disable command echo from Bluefruit */
   state.ble.echo(false);
-
-  Serial.println("Requesting Bluefruit info:");
-  /* Print Bluefruit information */
-  state.ble.info();
-
-  Serial.println(F("Please use Adafruit Bluefruit LE app to connect in Controller mode"));
-  Serial.println(F("Then activate/use the sensors, color picker, game controller, etc!\n"));
-
-  state.ble.verbose(false);  // debug info is a little annoying after this point!
-
-  Serial.println(F("******************************"));
-
-  // Set Bluefruit to DATA mode
-  Serial.println(F("Switching to DATA mode!"));
+  state.ble.verbose(false);
   state.ble.setMode(BLUEFRUIT_MODE_DATA);
-
-  Serial.println(F("******************************"));
 }
 
 void initializeLEDs() {
   for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-    state.stripColors[stripIndex] = new uint32_t[state.strips[stripIndex].numPixels()];
+    state.stripColors[stripIndex] = new Color[state.strips[stripIndex].numPixels()];
     state.strips[stripIndex].setBrightness(0);
     state.strips[stripIndex].begin();
     for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
-      state.stripColors[stripIndex][ledIndex] = Color(255, 255, 255);
-      state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex]);
+      state.stripColors[stripIndex][ledIndex] = Color(255, 255, 255, 255);
+      state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex].getConverted());
     }
     state.strips[stripIndex].show();
   }
@@ -103,19 +76,21 @@ void loop() {
   processRainbow();
 
   for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+    boolean forceUpdate = false;
     if (state.buttonStateChanged[stripIndex]) {
       state.stripDirty[stripIndex] = true;
+      forceUpdate = true;
       if (state.rfState[stripIndex] ^ state.bleState[stripIndex]) {
-        state.strips[stripIndex].setBrightness(state.brightness);
+        state.strips[stripIndex].setBrightness(255);
       } else {
         state.strips[stripIndex].setBrightness(0);
       }
-      for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
-        state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex]);
-      }
     }
     
-    if (state.stripDirty[stripIndex]) {
+    if (forceUpdate || (state.stripDirty[stripIndex] && state.strips[stripIndex].getBrightness())) {
+      for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
+        state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex].getConverted());
+      }
       state.lostMicros += state.strips[stripIndex].numPixels() * 27;
       state.strips[stripIndex].show();
       state.stripDirty[stripIndex] = false;
@@ -177,20 +152,23 @@ void readInput() {
 void processBrightnessFluxuation() {
   if(state.brightFlux.active) {
     state.brightFlux.currentTime += state.deltaMicros;
+    uint8_t newBrightness;
     if (state.brightFlux.currentTime >= state.brightFlux.duration) {
-      state.brightness = state.brightFlux.end;
+      newBrightness = state.brightFlux.end;
       uint8_t holdValue = state.brightFlux.end;
       state.brightFlux.end = state.brightFlux.start;
       state.brightFlux.start = holdValue;
       state.brightFlux.currentTime = 0;
     } else {
       double currentPosition = easing_cosine((double)state.brightFlux.currentTime / (double)state.brightFlux.duration);
-      state.brightness = lerp(currentPosition, state.brightFlux.start, state.brightFlux.end);
+      newBrightness = lerp(currentPosition, state.brightFlux.start, state.brightFlux.end);
     }
     
     for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-      state.strips[stripIndex].setBrightness(state.brightness);
       state.stripDirty[LEFT_POST_ID] = true;
+      for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
+        state.stripColors[stripIndex][ledIndex].o = newBrightness;
+      }
     }
   }
 }
@@ -219,14 +197,14 @@ void processPingPong() {
     }
     
     for(uint8_t dist = 0; dist < state.pingpong.spread; dist++) {
-      setBothSidesPixelColor(state.pingpong.pixel + dist, state.pingpong.colorFalloff[dist]);
-      setBothSidesPixelColor(state.pingpong.pixel - dist, state.pingpong.colorFalloff[dist]);
+      setBothSidesPixelOpacity(state.pingpong.pixel + dist, state.pingpong.falloff[dist]);
+      setBothSidesPixelOpacity(state.pingpong.pixel - dist, state.pingpong.falloff[dist]);
     }
 
-    uint32_t blankColor = state.pingpong.dark ? 0 : state.pingpong.colorFalloff[state.pingpong.spread - 1];
+    uint32_t blankColor = state.pingpong.dark ? 0 : state.pingpong.falloff[state.pingpong.spread - 1];
     for (uint8_t blankSpread = 0; blankSpread < 10; blankSpread++) {
-      setBothSidesPixelColor(state.pingpong.pixel + (state.pingpong.spread + blankSpread), blankColor);
-      setBothSidesPixelColor(state.pingpong.pixel - (state.pingpong.spread + blankSpread), blankColor);
+      setBothSidesPixelOpacity(state.pingpong.pixel + (state.pingpong.spread + blankSpread), blankColor);
+      setBothSidesPixelOpacity(state.pingpong.pixel - (state.pingpong.spread + blankSpread), blankColor);
     }
   }
 }
@@ -269,27 +247,10 @@ void processBLEBuffer() {
     // Controller Input
     if (packetbuffer[0] == '!') {
       if (packetbuffer[1] == 'C') {
-        // Colors
-        uint8_t red = packetbuffer[2];
-        uint8_t green = packetbuffer[3];
-        uint8_t blue = packetbuffer[4];
-        
-        Serial.print (F("Setting color to #"));
-        if (red < 0x10) Serial.print(F("0")); Serial.print(red, HEX);
-        if (green < 0x10) Serial.print(F("0")); Serial.print(green, HEX);
-        if (blue < 0x10) Serial.print(F("0")); Serial.println(blue, HEX);
-
-        state.color = Color(red, green, blue);
-
-        if(state.pingpong.active) {
-          initializePingPongMode(&state);
-        } else {
-          for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-            for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
-              state.stripColors[stripIndex][ledIndex] = Color(red, green, blue);
-              state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex]);
-            }
-            state.stripDirty[stripIndex] = true;
+        for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+          state.stripDirty[stripIndex] = true;
+          for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
+            state.stripColors[stripIndex][ledIndex] = Color(packetbuffer[2], packetbuffer[3], packetbuffer[4], state.stripColors[stripIndex][ledIndex].o);
           }
         }
       } else if (packetbuffer[1] == 'B') {
@@ -331,36 +292,36 @@ void processBLEBuffer() {
         token[i] = tolower(token[i]);
       }
       
-      if (token.equals("b") || token.equals("bright") || token.equals("brightness")) {
+      if (token.equals("b")) {
         processBrightnessCommand(&state);
-      } else if(token.equals("p") || token.equals("ping") || token.equals("pingpong")) {
+      } else if(token.equals("p")) {
         processPingPongCommand(&state);
-      } else if(token.equals("stat") || token.equals("status")) {
-        processStatusCommand(&state);
-      } else if(token.equals("r") || token.equals("rainbow")) {
+      } else if(token.equals("i")) {
+        processInfoCommand(&state);
+      } else if(token.equals("r")) {
         processRainbowCommand(&state);
-      } else if(token.equals("c") || token.equals("color")) {
+      } else if(token.equals("c")) {
+        processColorCommand(&state);
+      } else if(token.equals("s")) {
         processSaveCommand(&state);
-      } else if(token.equals("s") || token.equals("save")) {
-        processSaveCommand(&state);
-      } else if(token.equals("l") || token.equals("load")) {
+      } else if(token.equals("l")) {
         processLoadCommand(&state);
-      } else if(token.equals("e") || token.equals("ease") || token.equals("easing")) {
+      } else if(token.equals("e")) {
         processEasingCommand(&state);
-      } else if(token.equals("h") || token.equals("help")) {
+      } else if(token.equals("h")) {
         state.ble.println(F("--==[Help]==--"));
         state.ble.println(F("List of available commands:"));
         state.ble.println(F("- Brightness"));
         state.ble.println(F("- PingPong"));
         state.ble.println(F("- Rainbow"));
         state.ble.println(F("- Color"));
-        state.ble.println(F("- Status"));
+        state.ble.println(F("- Info"));
         state.ble.println(F("- Save"));
         state.ble.println(F("- Load"));
         state.ble.println(F("- Easing"));
         state.ble.println(F("- Help"));
       } else {
-        state.ble.println(F("Command not recognized. Please use \"help\" for a list of available commands."));
+        state.ble.println(F("Command not recognized. Please use \"h\" for a list of available commands."));
       }
     }
   }
@@ -369,12 +330,11 @@ void processBLEBuffer() {
 /**
  * Indexed from the top of the post (which is inversed
  */
-void setBothSidesPixelColor(uint8_t pixel, uint32_t color) {
+void setBothSidesPixelColor(uint8_t pixel, Color color) {
   if(pixel < LEDS_PER_SIDE && pixel >= 0) {
     if(pixel < LEFT_POST_LEDS) {
       pixel = LEFT_POST_LEDS - (pixel+1);
-      state.stripColors[LEFT_POST_ID][pixel] = color;
-      state.strips[LEFT_POST_ID].setPixelColor(pixel, color);
+      state.stripColors[LEFT_POST_ID][pixel].setColor(color);
       state.stripDirty[LEFT_POST_ID] = true;
       // TODO add for right post
       
@@ -383,8 +343,30 @@ void setBothSidesPixelColor(uint8_t pixel, uint32_t color) {
 //      state.stripDirty[RIGHT_POST_ID] = true;
     } else {
       pixel -= LEFT_POST_LEDS;
-      state.stripColors[LEFT_RAIL_ID][pixel] = color;
-      state.strips[LEFT_RAIL_ID].setPixelColor(pixel, color);
+      state.stripColors[LEFT_RAIL_ID][pixel].setColor(color);
+      state.stripDirty[LEFT_RAIL_ID] = true;
+      
+//      state.stripColors[RIGHT_RAIL_ID][pixel] = color;
+//      state.strips[RIGHT_RAIL_ID].setPixelColor(pixel, color);
+//      state.stripDirty[RIGHT_RAIL_ID] = true;
+    }
+  }
+}
+
+void setBothSidesPixelOpacity(uint8_t pixel, uint8_t opacity) {
+  if(pixel < LEDS_PER_SIDE && pixel >= 0) {
+    if(pixel < LEFT_POST_LEDS) {
+      pixel = LEFT_POST_LEDS - (pixel+1);
+      state.stripColors[LEFT_POST_ID][pixel].o = opacity;
+      state.stripDirty[LEFT_POST_ID] = true;
+      // TODO add for right post
+      
+//      state.stripColors[RIGHT_POST_ID][pixel] = color;
+//      state.strips[RIGHT_POST_ID].setPixelColor(pixel, color);
+//      state.stripDirty[RIGHT_POST_ID] = true;
+    } else {
+      pixel -= LEFT_POST_LEDS;
+      state.stripColors[LEFT_RAIL_ID][pixel].o = opacity;
       state.stripDirty[LEFT_RAIL_ID] = true;
       
 //      state.stripColors[RIGHT_RAIL_ID][pixel] = color;
