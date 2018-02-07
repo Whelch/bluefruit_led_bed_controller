@@ -56,6 +56,9 @@
 #define BLUEFRUIT_SPI_MOSI             11
 
 
+#define COMMAND_SEPARATOR " -\n:="
+
+
 /************************************************************************************************
  * Main File Constants
  ***********************************************************************************************/
@@ -68,16 +71,16 @@
 #define FACTORYRESET_ENABLE 1
 #define LEFT_POST_PIN 5
 #define LEFT_RAIL_PIN 6
-#define RIGHT_POST_PIN 9
+#define RIGHT_POST_PIN 11
 #define RIGHT_RAIL_PIN 10
-#define LEFT_POST_LEDS 150
-#define LEFT_RAIL_LEDS 0
-#define RIGHT_POST_LEDS 0
-#define RIGHT_RAIL_LEDS 0
+#define LEFT_POST_LEDS 40
+#define LEFT_RAIL_LEDS 56
+#define RIGHT_POST_LEDS 40
+#define RIGHT_RAIL_LEDS 56
 #define LEDS_PER_SIDE (LEFT_POST_LEDS + LEFT_RAIL_LEDS)
 #define TOTAL_NUM_LEDS (LEDS_PER_SIDE * 2)
 
-#define KEYFOB_PIN_A 12 // 18
-#define KEYFOB_PIN_B 19
-#define KEYFOB_PIN_C 20
-#define KEYFOB_PIN_D 21
+#define KEYFOB_PIN_A 20
+#define KEYFOB_PIN_B 21
+#define KEYFOB_PIN_C 18
+#define KEYFOB_PIN_D 19

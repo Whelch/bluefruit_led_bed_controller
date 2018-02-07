@@ -108,14 +108,14 @@ struct State {
   unsigned long lastMicros;
   uint16_t deltaMicros = 0;
   unsigned long lostMicros = 0;
-  unsigned long numCalls = 0;
-  unsigned long fpsMicros = 0;
+//  unsigned long numCalls = 0;
+//  unsigned long fpsMicros = 0;
   
   BrightnessFlux brightFlux;
   PingPong pingpong;
   Rainbow rainbow;
 
-  SaveState saveState[5];
+  SaveState saveState[4];
 };
 
 #endif

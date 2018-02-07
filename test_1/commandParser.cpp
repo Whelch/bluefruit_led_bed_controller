@@ -2,7 +2,6 @@
 #include "string.h"
 #include "mathLib.h"
 
-#define COMMAND_SEPARATOR " -\n:="
 
 void processBrightnessCommand(State *state) {
   boolean failed = true;
@@ -37,7 +36,7 @@ void processBrightnessCommand(State *state) {
           }
         }
         
-        Serial.print(F("Adjusting brightness: ")); Serial.println(newVal);
+        state->ble.print(F("Adjusting brightness: ")); state->ble.println(newVal);
       }
     }
   }
@@ -176,8 +175,8 @@ void processRainbowCommand(State *state) {
       state->ble.println(F("- [1-4] (optional) repeat"));
       state->ble.println(F("- [1000-65535] (optional) duration of a cycle in ms"));
       state->ble.println(F("\nExamples:"));
-      state->ble.println(F(" rainbow 2 2000"));
-      state->ble.println(F(" rainbow"));
+      state->ble.println(F(" r 2 2000"));
+      state->ble.println(F(" r"));
     }
   }
 }
@@ -223,13 +222,13 @@ void processColorCommand(State *state) {
   if (failed) {
     state->ble.println(F("--==[color]==--"));
     state->ble.println(F("Available colors"));
-    state->ble.println(F("Red"));
-    state->ble.println(F("Yellow"));
-    state->ble.println(F("Green"));
-    state->ble.println(F("Cyan"));
-    state->ble.println(F("Blue"));
-    state->ble.println(F("Purple"));
-    state->ble.println(F("White"));
+    state->ble.println(F("r: red"));
+    state->ble.println(F("y: yellow"));
+    state->ble.println(F("g: green"));
+    state->ble.println(F("c: cyan"));
+    state->ble.println(F("b: blue"));
+    state->ble.println(F("p: purple"));
+    state->ble.println(F("w: white"));
   }
 }
 
@@ -289,7 +288,7 @@ void processSaveCommand(State *state) {
   state->pingpong.easing = linear;
   if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
     uint8_t slot = token.toInt();
-    if (slot < 5) {
+    if (slot < 4) {
       failed = false;
       state->ble.print(F("State saved to slot ")); state->ble.println(slot);
       
@@ -317,7 +316,7 @@ void processSaveCommand(State *state) {
   if(failed) {
     state->ble.println(F("--==[save]==--"));
     state->ble.println(F("Takes 1 argument"));
-    state->ble.println(F("- [0-4] slot"));
+    state->ble.println(F("- [0-3] slot"));
     state->ble.println(F("\nExample:"));
     state->ble.println(F(" save 0"));
   }
@@ -328,7 +327,7 @@ void processLoadCommand(State *state) {
   state->pingpong.easing = linear;
   if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
     uint8_t slot = token.toInt();
-    if (slot < 5) {
+    if (slot < 4) {
       failed = false;
       state->ble.print(F("Slot ")); state->ble.print(slot); state->ble.println(F(" loaded"));
       
@@ -361,7 +360,7 @@ void processLoadCommand(State *state) {
   if(failed) {
     state->ble.println(F("--==[load]==--"));
     state->ble.println(F("Takes 1 argument"));
-    state->ble.println(F("- [0-4] slot"));
+    state->ble.println(F("- [0-3] slot"));
     state->ble.println(F("\nExample:"));
     state->ble.println(F(" load 0"));
   }

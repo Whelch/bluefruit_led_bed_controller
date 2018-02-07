@@ -15,12 +15,6 @@
 
 State state;
 
-// A small helper
-void error(const __FlashStringHelper * err) {
-  Serial.println(err);
-  while (1);
-}
-
 void setup() {
   initializeBLE();
   initializeLEDs();
@@ -29,7 +23,6 @@ void setup() {
 }
 
 void initializeBLE() {
-  Serial.begin(115200);
 
   state.ble.begin(VERBOSE_MODE);
 
@@ -64,7 +57,7 @@ void initializeRF() {
 }
 
 void loop() {
-  checkFPS();
+//  checkFPS();
   
   updateTime();
   
@@ -98,17 +91,17 @@ void loop() {
   }
 }
 
-void checkFPS() { 
-  state.numCalls++;
-  state.fpsMicros += state.deltaMicros;
-  if(state.fpsMicros > 1000000) {
-    Serial.print("FPS ");
-    Serial.println(state.numCalls);
-
-    state.numCalls = 0;
-    state.fpsMicros = 0;
-  }
-}
+//void checkFPS() { 
+//  state.numCalls++;
+//  state.fpsMicros += state.deltaMicros;
+//  if(state.fpsMicros > 1000000) {
+//    Serial.print(F("FPS "));
+//    Serial.println(state.numCalls);
+//
+//    state.numCalls = 0;
+//    state.fpsMicros = 0;
+//  }
+//}
 
 /**
  * Time tracking, since micros will not be 100% accurate due to lost time in the
@@ -244,6 +237,12 @@ void processRainbow() {
 
 void processBLEBuffer() {
   if(packetbuffer[0]) {
+    
+    state.ble.print("Command: ");
+    for (uint8_t i = 0; i < 10; i++) {
+      state.ble.print((char)packetbuffer[i]); 
+    }
+        
     // Controller Input
     if (packetbuffer[0] == '!') {
       if (packetbuffer[1] == 'C') {
@@ -257,41 +256,40 @@ void processBLEBuffer() {
         // Buttons
         uint8_t buttonNum = packetbuffer[2] - '0';
         boolean pressed = packetbuffer[3] - '0';
-        Serial.print(F("Button ")); Serial.print(buttonNum);
         if (pressed) {
           switch(buttonNum) {
             case 1:
-              state.bleState[LEFT_POST_ID] = !state.bleState[LEFT_POST_ID];
-              state.buttonStateChanged[LEFT_POST_ID] = true;
-              break;
-            case 2:
-              state.bleState[RIGHT_POST_ID] = !state.bleState[RIGHT_POST_ID];
-              state.buttonStateChanged[RIGHT_POST_ID] = true;
-              break;
-            case 3:
               state.bleState[LEFT_RAIL_ID] = !state.bleState[LEFT_RAIL_ID];
               state.buttonStateChanged[LEFT_RAIL_ID] = true;
               break;
-            case 4:
+            case 2:
               state.bleState[RIGHT_RAIL_ID] = !state.bleState[RIGHT_RAIL_ID];
               state.buttonStateChanged[RIGHT_RAIL_ID] = true;
               break;
+            case 3:
+              state.bleState[LEFT_POST_ID] = !state.bleState[LEFT_POST_ID];
+              state.buttonStateChanged[LEFT_POST_ID] = true;
+              break;
+            case 4:
+              state.bleState[RIGHT_POST_ID] = !state.bleState[RIGHT_POST_ID];
+              state.buttonStateChanged[RIGHT_POST_ID] = true;
+              break;
           }
-          Serial.println(F(" pressed"));
-          
-          Serial.print(F("Button State: "));
-          Serial.println(state.bleState[LEFT_POST_ID]);
-        } else {
-          Serial.println(F(" released"));
         }
       }
     } else {
       // Command Line
-      String token = strtok(packetbuffer, " -\n");
+      String token = strtok(packetbuffer, COMMAND_SEPARATOR);
+      state.ble.print(F("Token Before: "));
+      state.ble.println(token); 
+      state.ble.println(token == NULL); 
       for(uint8_t i = 0; token[i]; i++) {
         token[i] = tolower(token[i]);
       }
+      state.ble.print(F("Token After: "));
+      state.ble.println(token); 
       
+    
       if (token.equals("b")) {
         processBrightnessCommand(&state);
       } else if(token.equals("p")) {
