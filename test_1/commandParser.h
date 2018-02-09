@@ -19,4 +19,8 @@ void processLoadCommand(State *state);
 
 void processEasingCommand(State *state);
 
+void processKillCommand(State *state);
+
+void processOnOffCommand(State *state);
+
 #endif

@@ -1,4 +1,4 @@
-#include <Adafruit_NeoPixel.h>
+#include "LedStrip.h"
 #include <string.h>
 #include <Arduino.h>
 #include <SPI.h>
@@ -70,23 +70,26 @@ void loop() {
 
   for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
     boolean forceUpdate = false;
-    if (state.buttonStateChanged[stripIndex]) {
-      state.stripDirty[stripIndex] = true;
+    if (state.buttonStateChanged.get(stripIndex)) {
+      state.stripDirty.set(stripIndex, true);
       forceUpdate = true;
-      if (state.rfState[stripIndex] ^ state.bleState[stripIndex]) {
+      if (state.rfState.get(stripIndex) ^ state.bleState.get(stripIndex)) {
         state.strips[stripIndex].setBrightness(255);
       } else {
         state.strips[stripIndex].setBrightness(0);
       }
     }
     
-    if (forceUpdate || (state.stripDirty[stripIndex] && state.strips[stripIndex].getBrightness())) {
+    if (forceUpdate || (state.stripDirty.get(stripIndex) && state.strips[stripIndex].getBrightness())) {
       for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
         state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex].getConverted());
       }
       state.lostMicros += state.strips[stripIndex].numPixels() * 27;
+      if (stripIndex == RIGHT_POST_ID) {
+        Serial.println("Trying to update right post");
+      }
       state.strips[stripIndex].show();
-      state.stripDirty[stripIndex] = false;
+      state.stripDirty.set(stripIndex, false);
     }
   }
 }
@@ -126,14 +129,14 @@ void readInput() {
   for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
     boolean newRfState;
     switch (stripIndex) {
-      case LEFT_POST_ID: newRfState = digitalRead(KEYFOB_PIN_A) == HIGH; break;
-      case LEFT_RAIL_ID: newRfState = digitalRead(KEYFOB_PIN_C) == HIGH; break;
-      case RIGHT_POST_ID: newRfState = digitalRead(KEYFOB_PIN_B) == HIGH; break;
-      case RIGHT_RAIL_ID: newRfState = digitalRead(KEYFOB_PIN_D) == HIGH; break;
+      case LEFT_POST_ID: newRfState = digitalRead(KEYFOB_PIN_C) == HIGH; break;
+      case LEFT_RAIL_ID: newRfState = digitalRead(KEYFOB_PIN_A) == HIGH; break;
+      case RIGHT_POST_ID: newRfState = digitalRead(KEYFOB_PIN_D) == HIGH; break;
+      case RIGHT_RAIL_ID: newRfState = digitalRead(KEYFOB_PIN_B) == HIGH; break;
     }
     
-    state.buttonStateChanged[stripIndex] = state.rfState[stripIndex] != newRfState;
-    state.rfState[stripIndex] = newRfState;
+    state.buttonStateChanged.set(stripIndex, state.rfState.get(stripIndex) != newRfState);
+    state.rfState.set(stripIndex, newRfState);
   }
 
   /**********************
@@ -158,7 +161,7 @@ void processBrightnessFluxuation() {
     }
     
     for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-      state.stripDirty[LEFT_POST_ID] = true;
+      state.stripDirty.set(stripIndex, true);
       for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
         state.stripColors[stripIndex][ledIndex].o = newBrightness;
       }
@@ -237,8 +240,7 @@ void processRainbow() {
 
 void processBLEBuffer() {
   if(packetbuffer[0]) {
-    
-    state.ble.print("Command: ");
+    state.ble.print(F("Command: "));
     for (uint8_t i = 0; i < 10; i++) {
       state.ble.print((char)packetbuffer[i]); 
     }
@@ -247,7 +249,7 @@ void processBLEBuffer() {
     if (packetbuffer[0] == '!') {
       if (packetbuffer[1] == 'C') {
         for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-          state.stripDirty[stripIndex] = true;
+          state.stripDirty.set(stripIndex, true);
           for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
             state.stripColors[stripIndex][ledIndex] = Color(packetbuffer[2], packetbuffer[3], packetbuffer[4], state.stripColors[stripIndex][ledIndex].o);
           }
@@ -259,20 +261,20 @@ void processBLEBuffer() {
         if (pressed) {
           switch(buttonNum) {
             case 1:
-              state.bleState[LEFT_RAIL_ID] = !state.bleState[LEFT_RAIL_ID];
-              state.buttonStateChanged[LEFT_RAIL_ID] = true;
+              state.bleState.set(LEFT_RAIL_ID, !state.bleState.get(LEFT_RAIL_ID));
+              state.buttonStateChanged.set(LEFT_RAIL_ID, true);
               break;
             case 2:
-              state.bleState[RIGHT_RAIL_ID] = !state.bleState[RIGHT_RAIL_ID];
-              state.buttonStateChanged[RIGHT_RAIL_ID] = true;
+              state.bleState.set(RIGHT_RAIL_ID, !state.bleState.get(RIGHT_RAIL_ID));
+              state.buttonStateChanged.set(RIGHT_RAIL_ID, true);
               break;
             case 3:
-              state.bleState[LEFT_POST_ID] = !state.bleState[LEFT_POST_ID];
-              state.buttonStateChanged[LEFT_POST_ID] = true;
+              state.bleState.set(LEFT_POST_ID, !state.bleState.get(LEFT_POST_ID));
+              state.buttonStateChanged.set(LEFT_POST_ID, true);
               break;
             case 4:
-              state.bleState[RIGHT_POST_ID] = !state.bleState[RIGHT_POST_ID];
-              state.buttonStateChanged[RIGHT_POST_ID] = true;
+              state.bleState.set(RIGHT_POST_ID, !state.bleState.get(RIGHT_POST_ID));
+              state.buttonStateChanged.set(RIGHT_POST_ID, true);
               break;
           }
         }
@@ -280,46 +282,34 @@ void processBLEBuffer() {
     } else {
       // Command Line
       String token = strtok(packetbuffer, COMMAND_SEPARATOR);
-      state.ble.print(F("Token Before: "));
-      state.ble.println(token); 
-      state.ble.println(token == NULL); 
-      for(uint8_t i = 0; token[i]; i++) {
-        token[i] = tolower(token[i]);
-      }
-      state.ble.print(F("Token After: "));
-      state.ble.println(token); 
-      
-    
-      if (token.equals("b")) {
-        processBrightnessCommand(&state);
-      } else if(token.equals("p")) {
-        processPingPongCommand(&state);
-      } else if(token.equals("i")) {
-        processInfoCommand(&state);
-      } else if(token.equals("r")) {
-        processRainbowCommand(&state);
-      } else if(token.equals("c")) {
-        processColorCommand(&state);
-      } else if(token.equals("s")) {
-        processSaveCommand(&state);
-      } else if(token.equals("l")) {
-        processLoadCommand(&state);
-      } else if(token.equals("e")) {
-        processEasingCommand(&state);
-      } else if(token.equals("h")) {
-        state.ble.println(F("--==[Help]==--"));
-        state.ble.println(F("List of available commands:"));
-        state.ble.println(F("- Brightness"));
-        state.ble.println(F("- PingPong"));
-        state.ble.println(F("- Rainbow"));
-        state.ble.println(F("- Color"));
-        state.ble.println(F("- Info"));
-        state.ble.println(F("- Save"));
-        state.ble.println(F("- Load"));
-        state.ble.println(F("- Easing"));
-        state.ble.println(F("- Help"));
-      } else {
-        state.ble.println(F("Command not recognized. Please use \"h\" for a list of available commands."));
+
+      switch(tolower(token[0])) {
+        case 'b': processBrightnessCommand(&state); break;
+        case 'p': processPingPongCommand(&state); break;
+        case 'i': processInfoCommand(&state); break;
+        case 'r': processRainbowCommand(&state); break;
+        case 'c': processColorCommand(&state); break;
+        case 's': processSaveCommand(&state); break;
+        case 'l': processLoadCommand(&state); break;
+        case 'e': processEasingCommand(&state); break;
+        case 'k': processKillCommand(&state); break;
+        case 'o': processOnOffCommand(&state); break;
+        case 'h':
+          state.ble.println(F("--==[Help]==--"));
+          state.ble.println(F("List of available commands:"));
+          state.ble.println(F("- Brightness"));
+          state.ble.println(F("- PingPong"));
+          state.ble.println(F("- Rainbow"));
+          state.ble.println(F("- Color"));
+          state.ble.println(F("- Info"));
+          state.ble.println(F("- Save"));
+          state.ble.println(F("- Load"));
+          state.ble.println(F("- Easing"));
+          state.ble.println(F("- Help"));
+          break;
+        default:
+          state.ble.println(F("Command not recognized. Please use \"h\" for a list of available commands."));
+          break;
       }
     }
   }
@@ -333,20 +323,17 @@ void setBothSidesPixelColor(uint8_t pixel, Color color) {
     if(pixel < LEFT_POST_LEDS) {
       pixel = LEFT_POST_LEDS - (pixel+1);
       state.stripColors[LEFT_POST_ID][pixel].setColor(color);
-      state.stripDirty[LEFT_POST_ID] = true;
-      // TODO add for right post
+      state.stripDirty.set(LEFT_POST_ID, true);
       
-//      state.stripColors[RIGHT_POST_ID][pixel] = color;
-//      state.strips[RIGHT_POST_ID].setPixelColor(pixel, color);
-//      state.stripDirty[RIGHT_POST_ID] = true;
+      state.stripColors[RIGHT_POST_ID][pixel].setColor(color);
+      state.stripDirty.set(RIGHT_POST_ID, true);
     } else {
       pixel -= LEFT_POST_LEDS;
       state.stripColors[LEFT_RAIL_ID][pixel].setColor(color);
-      state.stripDirty[LEFT_RAIL_ID] = true;
+      state.stripDirty.set(LEFT_RAIL_ID, true);
       
-//      state.stripColors[RIGHT_RAIL_ID][pixel] = color;
-//      state.strips[RIGHT_RAIL_ID].setPixelColor(pixel, color);
-//      state.stripDirty[RIGHT_RAIL_ID] = true;
+      state.stripColors[RIGHT_RAIL_ID][pixel].setColor(color);
+      state.stripDirty.set(RIGHT_RAIL_ID, true);
     }
   }
 }
@@ -356,20 +343,17 @@ void setBothSidesPixelOpacity(uint8_t pixel, uint8_t opacity) {
     if(pixel < LEFT_POST_LEDS) {
       pixel = LEFT_POST_LEDS - (pixel+1);
       state.stripColors[LEFT_POST_ID][pixel].o = opacity;
-      state.stripDirty[LEFT_POST_ID] = true;
-      // TODO add for right post
+      state.stripDirty.set(LEFT_POST_ID, true);
       
-//      state.stripColors[RIGHT_POST_ID][pixel] = color;
-//      state.strips[RIGHT_POST_ID].setPixelColor(pixel, color);
-//      state.stripDirty[RIGHT_POST_ID] = true;
+      state.stripColors[RIGHT_POST_ID][pixel].o = opacity;
+      state.stripDirty.set(RIGHT_POST_ID, true);
     } else {
       pixel -= LEFT_POST_LEDS;
       state.stripColors[LEFT_RAIL_ID][pixel].o = opacity;
-      state.stripDirty[LEFT_RAIL_ID] = true;
+      state.stripDirty.set(LEFT_RAIL_ID, true);
       
-//      state.stripColors[RIGHT_RAIL_ID][pixel] = color;
-//      state.strips[RIGHT_RAIL_ID].setPixelColor(pixel, color);
-//      state.stripDirty[RIGHT_RAIL_ID] = true;
+      state.stripColors[RIGHT_RAIL_ID][pixel].o = opacity;
+      state.stripDirty.set(RIGHT_RAIL_ID, true);
     }
   }
 }

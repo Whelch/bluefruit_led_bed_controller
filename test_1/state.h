@@ -1,4 +1,4 @@
-#include <Adafruit_NeoPixel.h>
+#include "ledStrip.h"
 #include "Adafruit_BLE.h"
 #include "Adafruit_BluefruitLE_SPI.h"
 #include "Adafruit_BluefruitLE_UART.h"
@@ -88,19 +88,31 @@ struct SaveState {
   Rainbow rainbow;
 };
 
+struct BitState {
+  byte state;
+
+  void set(uint8_t index, boolean newState) {
+    bitWrite(state, index, newState);
+  }
+  
+  boolean get(uint8_t index) {
+    return bitRead(state, index);
+  }
+};
+
 struct State {
   Adafruit_BluefruitLE_SPI ble = Adafruit_BluefruitLE_SPI(BLUEFRUIT_SPI_CS, BLUEFRUIT_SPI_IRQ, BLUEFRUIT_SPI_RST);
 
-  boolean rfState[NUM_STRIPS] = {false, false, false, false };
-  boolean bleState[NUM_STRIPS] = {false, false, false, false };
-  boolean stripDirty[NUM_STRIPS] = {false, false, false, false };
-  boolean buttonStateChanged[NUM_STRIPS] = {false, false, false, false };
+  BitState rfState;
+  BitState bleState;
+  BitState stripDirty;
+  BitState buttonStateChanged;
 
-  Adafruit_NeoPixel strips[NUM_STRIPS] = {
-    Adafruit_NeoPixel(LEFT_POST_LEDS, LEFT_POST_PIN, NEO_GRBW + NEO_KHZ800),
-    Adafruit_NeoPixel(LEFT_RAIL_LEDS, LEFT_RAIL_PIN, NEO_GRBW + NEO_KHZ800),
-    Adafruit_NeoPixel(RIGHT_POST_LEDS, RIGHT_POST_PIN, NEO_GRBW + NEO_KHZ800),
-    Adafruit_NeoPixel(RIGHT_RAIL_LEDS, RIGHT_RAIL_PIN, NEO_GRBW + NEO_KHZ800),
+  LedStrip strips[NUM_STRIPS] = {
+    LedStrip(LEFT_POST_LEDS, LEFT_POST_PIN, NEO_GRBW + NEO_KHZ800),
+    LedStrip(LEFT_RAIL_LEDS, LEFT_RAIL_PIN, NEO_GRBW + NEO_KHZ800),
+    LedStrip(RIGHT_POST_LEDS, RIGHT_POST_PIN, NEO_GRBW + NEO_KHZ800),
+    LedStrip(RIGHT_RAIL_LEDS, RIGHT_RAIL_PIN, NEO_GRBW + NEO_KHZ800),
   };
   
   Color *stripColors[NUM_STRIPS];
@@ -115,7 +127,7 @@ struct State {
   PingPong pingpong;
   Rainbow rainbow;
 
-  SaveState saveState[4];
+  SaveState saveState[3];
 };
 
 #endif

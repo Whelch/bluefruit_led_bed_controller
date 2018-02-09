@@ -8,9 +8,10 @@ void processBrightnessCommand(State *state) {
   uint16_t newVal;
   uint8_t newBrightness = 255;
   while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    if (token.equals("f")) {
+    if (token[0] == 'f') {
       if (token = strtok(NULL, COMMAND_SEPARATOR)) {
-        if (uint8_t otherBrightness = token.toInt() || token.equals("0")) {
+        uint8_t otherBrightness;
+        if ((otherBrightness = token.toInt()) || token[0] == '0') {
           if (token = strtok(NULL, COMMAND_SEPARATOR)) {
             if (uint16_t duration = token.toInt()) {
               failed = false;
@@ -24,7 +25,7 @@ void processBrightnessCommand(State *state) {
           }
         }
       }
-    } else if(newVal = token.toInt() || token.equals("0")) {
+    } else if((newVal = token.toInt()) || token[0] == '0') {
       if (newVal <= UINT8_MAX) {
         failed = false;
         state->brightFlux.active = false;
@@ -32,7 +33,7 @@ void processBrightnessCommand(State *state) {
         for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
           for (uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
             state->stripColors[stripIndex][ledIndex].o = newVal;
-            state->stripDirty[stripIndex] = true;
+            state->stripDirty.set(stripIndex, true);
           }
         }
         
@@ -54,6 +55,8 @@ void processBrightnessCommand(State *state) {
       state->ble.println(F(" b 0"));
       state->ble.println(F(" b f 0 5000"));
     }
+  } else {
+    state->pingpong.active = false;
   }
 }
 
@@ -64,22 +67,22 @@ void processPingPongCommand(State *state) {
   uint8_t spread;
   uint32_t duration;
   while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    if (token.equals("e")) {
+    if (token[0] == 'e') {
       if (token = strtok(NULL, COMMAND_SEPARATOR)) {
-        if (token.equals("l")) {
+        if (token[0] == 'l') {
           easing = linear;
-        } else if (token.equals("s")) {
+        } else if (token[0] == 's') {
           easing = cosine;
-        } else if (token.equals("e")) {
+        } else if (token[0] == 'e') {
           easing = exponential;
-        } else if (token.equals("q")) {
+        } else if (token[0] == 'q') {
           easing = quartic;
         }
         if (!failed) {
           state->pingpong.easing = easing;
         }
       }
-    } else if(token.equals("d")) {
+    } else if(token[0] == 'd') {
       if(!failed) {
         state->pingpong.dark = true;
       }
@@ -119,7 +122,7 @@ void processPingPongCommand(State *state) {
                 state->stripColors[stripIndex][ledIndex].o = state->pingpong.falloff[state->pingpong.spread-1];
               }
             }
-            state->stripDirty[stripIndex];
+            state->stripDirty.set(stripIndex, true);
           }
           
           state->ble.println(F("PingPong mode enabled."));
@@ -150,6 +153,7 @@ void processRainbowCommand(State *state) {
   state->rainbow.currentTime = 0;
   state->rainbow.duration = 0;
   while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
+    state->ble.println(F("Found a rainbow token"));
     firstCommand = false;
     state->rainbow.active = true;
     uint32_t number = token.toInt();
@@ -185,25 +189,25 @@ void processColorCommand(State *state) {
   boolean failed = true;
   if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
     Color newColor;
-    if (token.equals("r")) {
+    if (token[0] == 'r') {
       failed = false;
       newColor.setColor(255, 0, 0);
-    } else if(token.equals("y")) {
+    } else if(token[0] == 'y') {
       failed = false;
       newColor.setColor(255, 255, 0);
-    } else if(token.equals("g")) {
+    } else if(token[0] == 'g') {
       failed = false;
       newColor.setColor(0, 255, 0);
-    } else if(token.equals("c")) {
+    } else if(token[0] == 'c') {
       failed = false;
       newColor.setColor(0, 255, 255);
-    } else if(token.equals("b")) {
+    } else if(token[0] == 'b') {
       failed = false;
       newColor.setColor(0, 0, 255);
-    } else if(token.equals("p")) {
+    } else if(token[0] == 'p') {
       failed = false;
       newColor.setColor(255, 0, 255);
-    } else if(token.equals("w")) {
+    } else if(token[0] == 'w') {
       failed = false;
       newColor.setColor(255, 255, 255);
     }
@@ -214,7 +218,7 @@ void processColorCommand(State *state) {
         for(uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
           state->stripColors[stripIndex][ledIndex].setColor(newColor);
         }
-        state->stripDirty[stripIndex] = true;
+        state->stripDirty.set(stripIndex, true);
       }
     }
   }
@@ -265,22 +269,23 @@ void processInfoCommand(State *state) {
         state->ble.println();
       }
     }
-    state->ble.print(F("Left Post: ")); state->ble.print(state->strips[LEFT_POST_ID].numPixels()); state->ble.println(F(" pixels"));
-    state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState[LEFT_POST_ID]);
-    state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState[LEFT_POST_ID]);
-    
-    state->ble.print(F("Left Rail: ")); state->ble.print(state->strips[LEFT_RAIL_ID].numPixels()); state->ble.println(F(" pixels"));
-    state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState[LEFT_RAIL_ID]);
-    state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState[LEFT_RAIL_ID]);
-    
-    state->ble.print(F("Right Post: ")); state->ble.print(state->strips[RIGHT_POST_ID].numPixels()); state->ble.println(F(" pixels"));
-    state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState[RIGHT_POST_ID]);
-    state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState[RIGHT_POST_ID]);
-    
-    state->ble.print(F("Right Rail: ")); state->ble.print(state->strips[RIGHT_RAIL_ID].numPixels()); state->ble.println(F(" pixels"));
-    state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState[RIGHT_RAIL_ID]);
-    state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState[RIGHT_RAIL_ID]);
   }
+  
+  state->ble.print(F("Left Post: ")); state->ble.print(state->strips[LEFT_POST_ID].numPixels()); state->ble.println(F(" pixels"));
+  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(LEFT_POST_ID));
+  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(LEFT_POST_ID));
+  
+  state->ble.print(F("Left Rail: ")); state->ble.print(state->strips[LEFT_RAIL_ID].numPixels()); state->ble.println(F(" pixels"));
+  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(LEFT_RAIL_ID));
+  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(LEFT_RAIL_ID));
+  
+  state->ble.print(F("Right Post: ")); state->ble.print(state->strips[RIGHT_POST_ID].numPixels()); state->ble.println(F(" pixels"));
+  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(RIGHT_POST_ID));
+  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(RIGHT_POST_ID));
+  
+  state->ble.print(F("Right Rail: ")); state->ble.print(state->strips[RIGHT_RAIL_ID].numPixels()); state->ble.println(F(" pixels"));
+  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(RIGHT_RAIL_ID));
+  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(RIGHT_RAIL_ID));
 }
 
 void processSaveCommand(State *state) {
@@ -288,7 +293,7 @@ void processSaveCommand(State *state) {
   state->pingpong.easing = linear;
   if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
     uint8_t slot = token.toInt();
-    if (slot < 4) {
+    if (slot < 3) {
       failed = false;
       state->ble.print(F("State saved to slot ")); state->ble.println(slot);
       
@@ -316,7 +321,7 @@ void processSaveCommand(State *state) {
   if(failed) {
     state->ble.println(F("--==[save]==--"));
     state->ble.println(F("Takes 1 argument"));
-    state->ble.println(F("- [0-3] slot"));
+    state->ble.println(F("- [0-2] slot"));
     state->ble.println(F("\nExample:"));
     state->ble.println(F(" save 0"));
   }
@@ -327,7 +332,7 @@ void processLoadCommand(State *state) {
   state->pingpong.easing = linear;
   if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
     uint8_t slot = token.toInt();
-    if (slot < 4) {
+    if (slot < 3) {
       failed = false;
       state->ble.print(F("Slot ")); state->ble.print(slot); state->ble.println(F(" loaded"));
       
@@ -360,7 +365,7 @@ void processLoadCommand(State *state) {
   if(failed) {
     state->ble.println(F("--==[load]==--"));
     state->ble.println(F("Takes 1 argument"));
-    state->ble.println(F("- [0-3] slot"));
+    state->ble.println(F("- [0-2] slot"));
     state->ble.println(F("\nExample:"));
     state->ble.println(F(" load 0"));
   }
@@ -373,5 +378,22 @@ void processEasingCommand(State *state) {
   state->ble.println(F("- Sine"));
   state->ble.println(F("- Exponential"));
   state->ble.println(F("- Quartic"));
+}
+
+void processKillCommand(State *state) {
+  asm volatile ("  jmp 0"); 
+}
+
+void processOnOffCommand(State *state) {
+  boolean anyOn = false;
+  for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+    anyOn |= state->rfState.get(stripIndex) ^ state->bleState.get(stripIndex);
+  }
+
+  boolean turnOn = !anyOn;
+  for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+    state->bleState.set(stripIndex, state->rfState.get(stripIndex) ^ turnOn);
+    state->buttonStateChanged.set(stripIndex, true);
+  }
 }
 
