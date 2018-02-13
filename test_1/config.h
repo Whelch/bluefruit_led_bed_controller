@@ -55,9 +55,10 @@
 #define BLUEFRUIT_SPI_MISO             12
 #define BLUEFRUIT_SPI_MOSI             11
 
+#define READ_BUFFER_SIZE                    40
+
 
 #define COMMAND_SEPARATOR " -\n:="
-
 
 /************************************************************************************************
  * Main File Constants

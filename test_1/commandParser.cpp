@@ -2,382 +2,130 @@
 #include "string.h"
 #include "mathLib.h"
 
-
-void processBrightnessCommand(State *state) {
-  boolean failed = true;
-  uint16_t newVal;
-  uint8_t newBrightness = 255;
-  while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    if (token[0] == 'f') {
-      if (token = strtok(NULL, COMMAND_SEPARATOR)) {
-        uint8_t otherBrightness;
-        if ((otherBrightness = token.toInt()) || token[0] == '0') {
-          if (token = strtok(NULL, COMMAND_SEPARATOR)) {
-            if (uint16_t duration = token.toInt()) {
-              failed = false;
-              state->brightFlux.active = true;
-              state->brightFlux.start = newBrightness;
-              state->brightFlux.end = otherBrightness;
-              state->brightFlux.duration = ((uint32_t)duration) * 1000; // Convert to micros and halve to get the start->end duration.
-              state->brightFlux.currentTime = 0;
-              state->ble.println(F("Brightness fluxuation enabled."));
-            }
-          }
-        }
-      }
-    } else if((newVal = token.toInt()) || token[0] == '0') {
-      if (newVal <= UINT8_MAX) {
-        failed = false;
-        state->brightFlux.active = false;
-        newBrightness = newVal;
-        for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-          for (uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
-            state->stripColors[stripIndex][ledIndex].o = newVal;
-            state->stripDirty.set(stripIndex, true);
-          }
-        }
-        
-        state->ble.print(F("Adjusting brightness: ")); state->ble.println(newVal);
-      }
-    }
+void readPacket(State *state) 
+{
+  memset(state->packetBuffer, 0, READ_BUFFER_SIZE);
+  
+  for(uint8_t i = 0; state->ble.available(); i++) {
+    char c = state->ble.read();
+    state->packetBuffer[i] = c;
   }
-  if(failed) {
-    if(state->brightFlux.active) {
-      state->brightFlux.active = false;
-      state->ble.println(F("Brightness fluxuation disabled."));
-    } else {
-      state->ble.println(F("--==[brightness]==--"));
-      state->ble.println(F("Available arguments:"));
-      state->ble.println(F("\nfluxuation [0-255] [1-65535] <optional>"));
-      state->ble.println(F("\n[0-255]"));
-      state->ble.println(F("\nExamples:"));
-      state->ble.println(F(" b 150"));
-      state->ble.println(F(" b 0"));
-      state->ble.println(F(" b f 0 5000"));
+}
+
+uint16_t convert2BytesToInt(byte* bytes) {
+  return (bytes[0] << 8) | bytes[1];
+}
+
+uint32_t convert4BytesToInt(byte* bytes) {
+  return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+}
+
+/**
+ * b+<startBrightness><endBrightness><duration><easing>
+ * <startBrightness> 1 byte
+ * <endBrightness> 1 byte
+ * <duration> 2 bytes
+ * <easing> 1 byte
+ */
+void processBreathingCommand(State *state) {
+  if (state->packetBuffer[1] == '+') {
+    state->breathing.active = true;
+    state->breathing.start = state->packetBuffer[2];
+    state->breathing.end = state->packetBuffer[3];
+    state->breathing.duration = convert2BytesToInt(&(state->packetBuffer[4])) * 1000;
+    state->breathing.easing = state->packetBuffer[6];
+
+    // Setting Breathing overrides PingPong command
+    state->pingpong.active = false;
+  } else {
+    state->breathing.active = false;
+  }
+}
+
+/**
+ * p+<spread><duration><easing><options>
+ * <spread> 1 byte
+ * <duration> 2 bytes
+ * <easing> 1 byte
+ * <options> 1 char each
+ * - d {dark}
+ */
+void processPingPongCommand(State *state) {
+  if (state->packetBuffer[1] == '+') {
+    state->pingpong.active = true;
+    state->pingpong.spread = state->packetBuffer[2];
+    state->pingpong.duration = convert2BytesToInt(&(state->packetBuffer[3])) * 1000;
+    state->pingpong.easing = state->packetBuffer[5];
+
+    state->pingpong.dark = false;
+    uint8_t optionsPointer = 6;
+    while (state->packetBuffer[optionsPointer]) {
+      switch(state->packetBuffer[optionsPointer]) {
+        case 'd': state->pingpong.dark = true; break;
+      }
+      optionsPointer++;
     }
+    
+    // Setting PingPong overrides Breathing command
+    state->breathing.active = false;
   } else {
     state->pingpong.active = false;
   }
 }
 
-void processPingPongCommand(State *state) {
-  boolean failed = true;
-  Easing easing = linear;
-  boolean dark = false;
-  uint8_t spread;
-  uint32_t duration;
-  while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    if (token[0] == 'e') {
-      if (token = strtok(NULL, COMMAND_SEPARATOR)) {
-        if (token[0] == 'l') {
-          easing = linear;
-        } else if (token[0] == 's') {
-          easing = cosine;
-        } else if (token[0] == 'e') {
-          easing = exponential;
-        } else if (token[0] == 'q') {
-          easing = quartic;
-        }
-        if (!failed) {
-          state->pingpong.easing = easing;
-        }
-      }
-    } else if(token[0] == 'd') {
-      if(!failed) {
-        state->pingpong.dark = true;
-      }
-      dark = true;
-    } else {
-      uint32_t number = token.toInt();
-      if (number) {
-        if (number <= 8) {
-          spread = number;
-        } else if (number >= 1000 && number <= UINT16_MAX) {
-          duration = number;
-        }
-  
-        if (spread && duration) {
-          failed = false;
-          state->pingpong.active = true;
-          state->brightFlux.active = false;
-          state->pingpong.spread = spread;
-          state->pingpong.pixel = spread;
-          state->pingpong.duration = duration * 1000;
-          state->pingpong.directionUp = false;
-          state->pingpong.falloff = new uint8_t[spread];
-          state->pingpong.easing = easing;
-          state->pingpong.dark = dark;
-          
-          uint8_t o = 255;
-          for (uint16_t index = 0; index < state->pingpong.spread; index++) {
-            state->pingpong.falloff[index] = o;
-            o /= 2;
-          }
-          
-          for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-            for (uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
-              if (state->pingpong.dark) {
-                state->stripColors[stripIndex][ledIndex].o = 0;
-              } else {
-                state->stripColors[stripIndex][ledIndex].o = state->pingpong.falloff[state->pingpong.spread-1];
-              }
-            }
-            state->stripDirty.set(stripIndex, true);
-          }
-          
-          state->ble.println(F("PingPong mode enabled."));
-        }
-      }
-    }
-  }
-  if(failed) {
-    if (state->pingpong.active) {
-      state->pingpong.active = false;
-      state->ble.println(F("PingPong mode disabled."));
-    } else {
-      state->ble.println(F("--==[pingpong]==--"));
-      state->ble.println(F("Takes 2 arguments"));
-      state->ble.println(F("- [1-8]: pixel spread"));
-      state->ble.println(F("- [1000-65535]: duration of a cyle in ms"));
-      state->ble.println(F("- d: (optional) specifies that all other pixels should be turned off"));
-      state->ble.println(F("- e <easing>: (optional) adds an easing"));
-      state->ble.println(F("\nExample:"));
-      state->ble.println(F(" pingpong 5 5000 d"));
-    }
-  }
-}
-
+/**
+ * r+<repeat><duration>
+ * <repeat> 1 byte
+ * <duration> 2 bytes
+ */
 void processRainbowCommand(State *state) {
-  boolean firstCommand = true;
-  state->rainbow.repeat = 1;
-  state->rainbow.currentTime = 0;
-  state->rainbow.duration = 0;
-  while (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    state->ble.println(F("Found a rainbow token"));
-    firstCommand = false;
+  if (state->packetBuffer[1] == '+') {
     state->rainbow.active = true;
-    uint32_t number = token.toInt();
-    if (number) {
-      if (number <= 4) {
-        state->rainbow.repeat = number;
-      } else if (number >= 1000 && number <= UINT16_MAX) {
-        state->rainbow.duration = number * 1000;
-      }
-
-      state->ble.println(F("Rainbow mode enabled."));
-    }
-  }
-  if(firstCommand) {
-    if (state->rainbow.active) {
-      state->rainbow.active = false;
-      state->ble.println(F("Rainbow mode disabled."));
-    } else {
-      state->rainbow.active = true;
-      state->ble.println(F("Rainbow mode enabled."));
-      state->ble.println(F("--==[rainbow]==--"));
-      state->ble.println(F("Takes 2 arguments"));
-      state->ble.println(F("- [1-4] (optional) repeat"));
-      state->ble.println(F("- [1000-65535] (optional) duration of a cycle in ms"));
-      state->ble.println(F("\nExamples:"));
-      state->ble.println(F(" r 2 2000"));
-      state->ble.println(F(" r"));
-    }
+    state->rainbow.repeat = state->packetBuffer[2];
+    state->rainbow.duration = convert2BytesToInt(&(state->packetBuffer[3])) * 1000;
+  } else {
+    state->rainbow.active = false;
   }
 }
 
+/**
+ * c<red><green><blue>
+ * <red> 1 byte
+ * <green> 1 byte
+ * <blue> 1 byte
+ */
 void processColorCommand(State *state) {
-  boolean failed = true;
-  if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    Color newColor;
-    if (token[0] == 'r') {
-      failed = false;
-      newColor.setColor(255, 0, 0);
-    } else if(token[0] == 'y') {
-      failed = false;
-      newColor.setColor(255, 255, 0);
-    } else if(token[0] == 'g') {
-      failed = false;
-      newColor.setColor(0, 255, 0);
-    } else if(token[0] == 'c') {
-      failed = false;
-      newColor.setColor(0, 255, 255);
-    } else if(token[0] == 'b') {
-      failed = false;
-      newColor.setColor(0, 0, 255);
-    } else if(token[0] == 'p') {
-      failed = false;
-      newColor.setColor(255, 0, 255);
-    } else if(token[0] == 'w') {
-      failed = false;
-      newColor.setColor(255, 255, 255);
+  byte r = state->packetBuffer[1];
+  byte g = state->packetBuffer[2];
+  byte b = state->packetBuffer[3];
+  
+  for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+    for (uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
+      state->stripColors[stripIndex][ledIndex].setColor(r, g, b);
     }
-
-    if(!failed) {
-      state->rainbow.active = false;
-      for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-        for(uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
-          state->stripColors[stripIndex][ledIndex].setColor(newColor);
-        }
-        state->stripDirty.set(stripIndex, true);
-      }
-    }
-  }
-
-  if (failed) {
-    state->ble.println(F("--==[color]==--"));
-    state->ble.println(F("Available colors"));
-    state->ble.println(F("r: red"));
-    state->ble.println(F("y: yellow"));
-    state->ble.println(F("g: green"));
-    state->ble.println(F("c: cyan"));
-    state->ble.println(F("b: blue"));
-    state->ble.println(F("p: purple"));
-    state->ble.println(F("w: white"));
-  }
-}
-
-void processInfoCommand(State *state) {
-  state->ble.println(F("--==[info]==--"));
-  state->ble.print(F("Last Micros : ")); state->ble.println(state->lastMicros);
-  state->ble.print(F("Current Micros : ")); state->ble.println(micros());
-  state->ble.print(F("Delta Micros : ")); state->ble.println(state->deltaMicros);
-  state->ble.print(F("Lost Micros : ")); state->ble.println(state->lostMicros);
-  state->ble.print(F("Rainbow: ")); state->ble.println(state->rainbow.active);
-  if (state->rainbow.active) {
-    state->ble.print(F("- Repeat: ")); state->ble.println(state->rainbow.repeat);
-    state->ble.print(F("- Duration: ")); state->ble.print(state->rainbow.currentTime); state->ble.print("/"); state->ble.println(state->rainbow.duration);
-  }
-  state->ble.print(F("Brightness Flux: ")); state->ble.println(state->brightFlux.active);
-  if (state->brightFlux.active) {
-    state->ble.print(F("- Start: ")); state->ble.println(state->brightFlux.start);
-    state->ble.print(F("- End: ")); state->ble.println(state->brightFlux.end);
-    state->ble.print(F("- Duration: ")); state->ble.print(state->brightFlux.currentTime); state->ble.print("/"); state->ble.println(state->brightFlux.duration);
-    state->ble.print(F("- Easing: ")); state->ble.println(state->brightFlux.easing);
-  }
-  state->ble.print(F("PingPong: ")); state->ble.println(state->pingpong.active);
-  if (state->pingpong.active) {
-    state->ble.print(F("- pixel: ")); state->ble.println(state->pingpong.pixel);
-    state->ble.print(F("- Spread: ")); state->ble.println(state->pingpong.spread);
-    state->ble.print(F("- Duration: ")); state->ble.print(state->pingpong.currentTime); state->ble.print("/"); state->ble.println(state->pingpong.duration);
-    state->ble.print(F("- Dark: ")); state->ble.println(state->pingpong.dark);
-    state->ble.print(F("- Falloff: "));
-    for(uint8_t spreadIndex = 0; spreadIndex < state->pingpong.spread; spreadIndex++) {
-      printColorToBle(state->pingpong.falloff[spreadIndex], &(state->ble));
-      if (spreadIndex + 1 < state->pingpong.spread) {
-        state->ble.print(F(", "));
-      } else {
-        state->ble.println();
-      }
-    }
+    state->stripDirty.set(stripIndex, true);
   }
   
-  state->ble.print(F("Left Post: ")); state->ble.print(state->strips[LEFT_POST_ID].numPixels()); state->ble.println(F(" pixels"));
-  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(LEFT_POST_ID));
-  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(LEFT_POST_ID));
-  
-  state->ble.print(F("Left Rail: ")); state->ble.print(state->strips[LEFT_RAIL_ID].numPixels()); state->ble.println(F(" pixels"));
-  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(LEFT_RAIL_ID));
-  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(LEFT_RAIL_ID));
-  
-  state->ble.print(F("Right Post: ")); state->ble.print(state->strips[RIGHT_POST_ID].numPixels()); state->ble.println(F(" pixels"));
-  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(RIGHT_POST_ID));
-  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(RIGHT_POST_ID));
-  
-  state->ble.print(F("Right Rail: ")); state->ble.print(state->strips[RIGHT_RAIL_ID].numPixels()); state->ble.println(F(" pixels"));
-  state->ble.print(F("- Radio Button: ")); state->ble.println(state->rfState.get(RIGHT_RAIL_ID));
-  state->ble.print(F("- Bluetooth Button: ")); state->ble.println(state->bleState.get(RIGHT_RAIL_ID));
+  // Setting Color overrides Rainbow command
+  state->pingpong.active = false;
 }
 
-void processSaveCommand(State *state) {
-  boolean failed = true;
-  state->pingpong.easing = linear;
-  if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    uint8_t slot = token.toInt();
-    if (slot < 3) {
-      failed = false;
-      state->ble.print(F("State saved to slot ")); state->ble.println(slot);
-      
-      state->saveState[slot].brightFlux.active = state->brightFlux.active;
-      state->saveState[slot].brightFlux.start = state->brightFlux.start;
-      state->saveState[slot].brightFlux.end = state->brightFlux.end;
-      state->saveState[slot].brightFlux.duration = state->brightFlux.duration;
-      state->saveState[slot].brightFlux.easing = state->brightFlux.easing;
-      
-      state->saveState[slot].rainbow.active = state->rainbow.active;
-      state->saveState[slot].rainbow.repeat = state->rainbow.repeat;
-      state->saveState[slot].rainbow.duration = state->rainbow.duration;
-      
-      state->saveState[slot].pingpong.active = state->pingpong.active;
-      state->saveState[slot].pingpong.spread = state->pingpong.spread;
-      state->saveState[slot].pingpong.duration = state->pingpong.duration;
-      state->saveState[slot].pingpong.dark = state->pingpong.dark;
-      state->saveState[slot].pingpong.easing = state->pingpong.easing;
-
-      for (uint8_t spread = 0; spread < state->pingpong.spread; spread++) {
-        state->saveState[slot].pingpong.falloff[spread] = state->pingpong.falloff[spread];
-      }
+/**
+ * i<intensity>
+ * <intensity> 1 byte
+ */
+void processIntensityCommand(State *state) {
+  byte newIntensity = state->packetBuffer[1];
+  for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+    for (uint16_t ledIndex = 0; ledIndex < state->strips[stripIndex].numPixels(); ledIndex++) {
+      state->stripColors[stripIndex][ledIndex].o = newIntensity;
     }
+    state->stripDirty.set(stripIndex, true);
   }
-  if(failed) {
-    state->ble.println(F("--==[save]==--"));
-    state->ble.println(F("Takes 1 argument"));
-    state->ble.println(F("- [0-2] slot"));
-    state->ble.println(F("\nExample:"));
-    state->ble.println(F(" save 0"));
-  }
-}
 
-void processLoadCommand(State *state) {
-  boolean failed = true;
-  state->pingpong.easing = linear;
-  if (String token = strtok(NULL, COMMAND_SEPARATOR)) {
-    uint8_t slot = token.toInt();
-    if (slot < 3) {
-      failed = false;
-      state->ble.print(F("Slot ")); state->ble.print(slot); state->ble.println(F(" loaded"));
-      
-      state->brightFlux.active = state->saveState[slot].brightFlux.active;
-      state->brightFlux.start = state->saveState[slot].brightFlux.start;
-      state->brightFlux.end = state->saveState[slot].brightFlux.end;
-      state->brightFlux.duration = state->saveState[slot].brightFlux.duration;
-      state->brightFlux.currentTime = 0;
-      state->brightFlux.easing = state->saveState[slot].brightFlux.easing;
-      
-      state->rainbow.active = state->saveState[slot].rainbow.active;
-      state->rainbow.repeat = state->saveState[slot].rainbow.repeat;
-      state->rainbow.duration = state->saveState[slot].rainbow.duration;
-      state->rainbow.currentTime = 0;
-      
-      state->pingpong.active = state->saveState[slot].pingpong.active;
-      state->pingpong.pixel = state->saveState[slot].pingpong.spread;
-      state->pingpong.spread = state->saveState[slot].pingpong.spread;
-      state->pingpong.duration = state->saveState[slot].pingpong.duration;
-      state->pingpong.currentTime = 0;
-      state->pingpong.directionUp = false;
-      state->pingpong.dark = state->saveState[slot].pingpong.dark;
-      state->pingpong.easing = state->saveState[slot].pingpong.easing;
-
-      for (uint8_t spread = 0; spread < state->pingpong.spread; spread++) {
-        state->saveState[slot].pingpong.falloff[spread] = state->pingpong.falloff[spread];
-      }
-    }
-  }
-  if(failed) {
-    state->ble.println(F("--==[load]==--"));
-    state->ble.println(F("Takes 1 argument"));
-    state->ble.println(F("- [0-2] slot"));
-    state->ble.println(F("\nExample:"));
-    state->ble.println(F(" load 0"));
-  }
-}
-
-void processEasingCommand(State *state) {
-  state->ble.println(F("--==[easing]==--"));
-  state->ble.println(F("List of available Easings:"));
-  state->ble.println(F("- Linear (default)"));
-  state->ble.println(F("- Sine"));
-  state->ble.println(F("- Exponential"));
-  state->ble.println(F("- Quartic"));
+  // Setting Intensity overrides PingPong and Breathing command
+  state->pingpong.active = false;
+  state->breathing.active = false;
 }
 
 void processKillCommand(State *state) {

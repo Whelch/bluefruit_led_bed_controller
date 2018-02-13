@@ -8,15 +8,6 @@
 #ifndef STATE_H_
 #define STATE_H_
 
-struct BrightnessFlux {
-  boolean active;
-  uint8_t start; // The "from" brightness.
-  uint8_t end; // The  "to" brightness. These switch every half-period
-  uint32_t duration; // Duration from start to end.
-  uint32_t currentTime;
-  Easing easing;
-};
-
 struct Color {
   uint8_t r;
   uint8_t g;
@@ -63,6 +54,15 @@ struct Color {
   }
 };
 
+struct Breathing {
+  boolean active;
+  uint8_t start; // The "from" brightness.
+  uint8_t end; // The  "to" brightness. These switch every half-period
+  uint32_t duration; // Duration from start to end.
+  uint32_t currentTime;
+  Easing easing;
+};
+
 struct PingPong {
   boolean active;
   uint8_t pixel; // The "from" brightness.
@@ -80,12 +80,6 @@ struct Rainbow {
   uint8_t repeat; // how many times the rainbow repeats on a side
   uint32_t duration; // how long for the rainbow to repeat.
   uint32_t currentTime;
-};
-
-struct SaveState {
-  BrightnessFlux brightFlux;
-  PingPong pingpong;
-  Rainbow rainbow;
 };
 
 struct BitState {
@@ -107,6 +101,8 @@ struct State {
   BitState bleState;
   BitState stripDirty;
   BitState buttonStateChanged;
+  
+  uint8_t packetBuffer[READ_BUFFER_SIZE];
 
   LedStrip strips[NUM_STRIPS] = {
     LedStrip(LEFT_POST_LEDS, LEFT_POST_PIN, NEO_GRBW + NEO_KHZ800),
@@ -123,11 +119,9 @@ struct State {
 //  unsigned long numCalls = 0;
 //  unsigned long fpsMicros = 0;
   
-  BrightnessFlux brightFlux;
+  Breathing breathing;
   PingPong pingpong;
   Rainbow rainbow;
-
-  SaveState saveState[3];
 };
 
 #endif

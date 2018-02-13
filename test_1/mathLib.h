@@ -7,10 +7,10 @@
 #define PI 3.14159265
 
 enum Easing: uint8_t {
-  linear = 1,
-  cosine = 2,
-  exponential = 3,
-  quartic = 4
+  linear = 0,
+  cosine = 1,
+  exponential = 2,
+  quartic = 3
 };
 
 long lerp(double percent, long start, long end);

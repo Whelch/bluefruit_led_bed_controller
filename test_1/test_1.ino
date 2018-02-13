@@ -10,7 +10,6 @@
 #include "config.h"
 #include "state.h"
 #include "commandParser.h"
-#include "packetParser.h"
 #include "mathLib.h"
 
 State state;
@@ -64,7 +63,7 @@ void loop() {
   readInput();
   
   processBLEBuffer();
-  processBrightnessFluxuation();
+  processBreathing();
   processPingPong();
   processRainbow();
 
@@ -142,22 +141,22 @@ void readInput() {
   /**********************
    * Bluetooth input
    *********************/
-  readPacket(&(state.ble));
+  readPacket(&state);
 }
 
-void processBrightnessFluxuation() {
-  if(state.brightFlux.active) {
-    state.brightFlux.currentTime += state.deltaMicros;
+void processBreathing() {
+  if(state.breathing.active) {
+    state.breathing.currentTime += state.deltaMicros;
     uint8_t newBrightness;
-    if (state.brightFlux.currentTime >= state.brightFlux.duration) {
-      newBrightness = state.brightFlux.end;
-      uint8_t holdValue = state.brightFlux.end;
-      state.brightFlux.end = state.brightFlux.start;
-      state.brightFlux.start = holdValue;
-      state.brightFlux.currentTime = 0;
+    if (state.breathing.currentTime >= state.breathing.duration) {
+      newBrightness = state.breathing.end;
+      uint8_t holdValue = state.breathing.end;
+      state.breathing.end = state.breathing.start;
+      state.breathing.start = holdValue;
+      state.breathing.currentTime = 0;
     } else {
-      double currentPosition = easing_cosine((double)state.brightFlux.currentTime / (double)state.brightFlux.duration);
-      newBrightness = lerp(currentPosition, state.brightFlux.start, state.brightFlux.end);
+      double currentPosition = easing_cosine((double)state.breathing.currentTime / (double)state.breathing.duration);
+      newBrightness = lerp(currentPosition, state.breathing.start, state.breathing.end);
     }
     
     for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
@@ -207,8 +206,15 @@ void processPingPong() {
 
 void processRainbow() {
   if (state.rainbow.active) {
-//    uint8_t changePerPixel = LEDS_PER_SIDE / state.rainbow.repeat;
-    uint8_t changePerPixel = (256 * 6 * state.rainbow.repeat) / LEDS_PER_SIDE;
+
+    uint8_t changePerPixel;
+
+    if (state.rainbow.repeat) {
+      changePerPixel = (256 * 6 * state.rainbow.repeat) / LEDS_PER_SIDE;
+    } else { // .5 value
+      changePerPixel = (256 * 6) / (LEDS_PER_SIDE * 2);
+    }
+    
     uint16_t currentColorPosition = 0;
     if (state.rainbow.duration) {
       state.rainbow.currentTime += state.deltaMicros;
@@ -239,78 +245,15 @@ void processRainbow() {
 }
 
 void processBLEBuffer() {
-  if(packetbuffer[0]) {
-    state.ble.print(F("Command: "));
-    for (uint8_t i = 0; i < 10; i++) {
-      state.ble.print((char)packetbuffer[i]); 
-    }
-        
-    // Controller Input
-    if (packetbuffer[0] == '!') {
-      if (packetbuffer[1] == 'C') {
-        for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-          state.stripDirty.set(stripIndex, true);
-          for(uint16_t ledIndex = 0; ledIndex < state.strips[stripIndex].numPixels(); ledIndex++) {
-            state.stripColors[stripIndex][ledIndex] = Color(packetbuffer[2], packetbuffer[3], packetbuffer[4], state.stripColors[stripIndex][ledIndex].o);
-          }
-        }
-      } else if (packetbuffer[1] == 'B') {
-        // Buttons
-        uint8_t buttonNum = packetbuffer[2] - '0';
-        boolean pressed = packetbuffer[3] - '0';
-        if (pressed) {
-          switch(buttonNum) {
-            case 1:
-              state.bleState.set(LEFT_RAIL_ID, !state.bleState.get(LEFT_RAIL_ID));
-              state.buttonStateChanged.set(LEFT_RAIL_ID, true);
-              break;
-            case 2:
-              state.bleState.set(RIGHT_RAIL_ID, !state.bleState.get(RIGHT_RAIL_ID));
-              state.buttonStateChanged.set(RIGHT_RAIL_ID, true);
-              break;
-            case 3:
-              state.bleState.set(LEFT_POST_ID, !state.bleState.get(LEFT_POST_ID));
-              state.buttonStateChanged.set(LEFT_POST_ID, true);
-              break;
-            case 4:
-              state.bleState.set(RIGHT_POST_ID, !state.bleState.get(RIGHT_POST_ID));
-              state.buttonStateChanged.set(RIGHT_POST_ID, true);
-              break;
-          }
-        }
-      }
-    } else {
-      // Command Line
-      String token = strtok(packetbuffer, COMMAND_SEPARATOR);
-
-      switch(tolower(token[0])) {
-        case 'b': processBrightnessCommand(&state); break;
-        case 'p': processPingPongCommand(&state); break;
-        case 'i': processInfoCommand(&state); break;
-        case 'r': processRainbowCommand(&state); break;
-        case 'c': processColorCommand(&state); break;
-        case 's': processSaveCommand(&state); break;
-        case 'l': processLoadCommand(&state); break;
-        case 'e': processEasingCommand(&state); break;
-        case 'k': processKillCommand(&state); break;
-        case 'o': processOnOffCommand(&state); break;
-        case 'h':
-          state.ble.println(F("--==[Help]==--"));
-          state.ble.println(F("List of available commands:"));
-          state.ble.println(F("- Brightness"));
-          state.ble.println(F("- PingPong"));
-          state.ble.println(F("- Rainbow"));
-          state.ble.println(F("- Color"));
-          state.ble.println(F("- Info"));
-          state.ble.println(F("- Save"));
-          state.ble.println(F("- Load"));
-          state.ble.println(F("- Easing"));
-          state.ble.println(F("- Help"));
-          break;
-        default:
-          state.ble.println(F("Command not recognized. Please use \"h\" for a list of available commands."));
-          break;
-      }
+  if(state.packetBuffer[0]) {
+     switch(tolower(state.packetBuffer[0])) {
+      case 'b': processBreathingCommand(&state); break;
+      case 'p': processPingPongCommand(&state); break;
+      case 'r': processRainbowCommand(&state); break;
+      case 'c': processColorCommand(&state); break;
+      case 'i': processIntensityCommand(&state); break;
+      case 'k': processKillCommand(&state); break;
+      case 'o': processOnOffCommand(&state); break;
     }
   }
 }
