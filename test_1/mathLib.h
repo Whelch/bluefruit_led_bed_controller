@@ -1,6 +1,3 @@
-#include "Adafruit_BluefruitLE_SPI.h"
-#include "Adafruit_BluefruitLE_UART.h"
-
 #ifndef MATH_LIB_H_
 #define MATH_LIB_H_
 
@@ -15,7 +12,7 @@ enum Easing: uint8_t {
 
 long lerp(double percent, long start, long end);
 
-void printColorToBle(uint32_t color, Adafruit_BluefruitLE_SPI* ble);
+uint8_t distance(uint8_t first, uint8_t second);
 
 double easing_cosine(double input);
 
@@ -26,5 +23,7 @@ double easing_quartic(double input);
 double easing_linear(double input);
 
 double ease(Easing easing, double input);
+
+
 
 #endif

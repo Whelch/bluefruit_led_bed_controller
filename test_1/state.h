@@ -70,7 +70,7 @@ struct PingPong {
   uint32_t duration;
   uint32_t currentTime;
   boolean directionUp;
-  uint8_t *falloff;
+  uint8_t falloff[8];
   boolean dark;
   Easing easing;
 };

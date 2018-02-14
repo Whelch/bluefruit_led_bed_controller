@@ -9,14 +9,9 @@ long lerp(double percent, long start, long end) {
   return start + (long)((end-start)*percent);
 }
 
-void printColorToBle(uint32_t color, Adafruit_BluefruitLE_SPI* ble) {
-  uint8_t r = color >> 16;
-  uint8_t g = color >> 8;
-  uint8_t b = color;
-  ble->print(F("#"));
-  if (r < 0x10) ble->print(F("0")); ble->print(r, HEX);
-  if (g < 0x10) ble->print(F("0")); ble->print(g, HEX);
-  if (b < 0x10) ble->print(F("0")); ble->print(b, HEX);
+uint8_t distance(uint8_t first, uint8_t second) {
+  if (first > second) return first - second;
+  else return second - first;
 }
 
 /**

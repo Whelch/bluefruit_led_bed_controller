@@ -170,6 +170,7 @@ void processBreathing() {
 
 void processPingPong() {
   if(state.pingpong.active) {
+    uint8_t previousPixel = state.pingpong.pixel;
     uint8_t topPixel = state.pingpong.spread - 1;
     uint8_t bottomPixel = LEDS_PER_SIDE - state.pingpong.spread;
     state.pingpong.currentTime += state.deltaMicros;
@@ -190,16 +191,17 @@ void processPingPong() {
         state.pingpong.pixel = lerp(easePosition, topPixel, bottomPixel);
       }
     }
+
+    uint8_t dist = distance(previousPixel, state.pingpong.pixel);
+    uint32_t blankColor = state.pingpong.dark ? 0 : state.pingpong.falloff[state.pingpong.spread - 1];
+    for (uint8_t blankSpread = 0; blankSpread < dist; blankSpread++) {
+      setBothSidesPixelOpacity(previousPixel + (state.pingpong.spread + blankSpread), blankColor);
+      setBothSidesPixelOpacity(previousPixel - (state.pingpong.spread + blankSpread), blankColor);
+    }
     
     for(uint8_t dist = 0; dist < state.pingpong.spread; dist++) {
       setBothSidesPixelOpacity(state.pingpong.pixel + dist, state.pingpong.falloff[dist]);
       setBothSidesPixelOpacity(state.pingpong.pixel - dist, state.pingpong.falloff[dist]);
-    }
-
-    uint32_t blankColor = state.pingpong.dark ? 0 : state.pingpong.falloff[state.pingpong.spread - 1];
-    for (uint8_t blankSpread = 0; blankSpread < 10; blankSpread++) {
-      setBothSidesPixelOpacity(state.pingpong.pixel + (state.pingpong.spread + blankSpread), blankColor);
-      setBothSidesPixelOpacity(state.pingpong.pixel - (state.pingpong.spread + blankSpread), blankColor);
     }
   }
 }
