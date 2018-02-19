@@ -24,12 +24,21 @@ void setup() {
 void initializeBLE() {
 
   state.ble.begin(VERBOSE_MODE);
-
+  
   if(FACTORYRESET_ENABLE) {
     state.ble.factoryReset();
   }
 
-  state.ble.sendCommandCheckOK("AT+GAPDEVNAME=Bed Controller");
+  state.ble.sendCommandWithIntReply(F("AT+GATTADDSERVICE=UUID128=85-7f-00-01-e2-ab-46-72-aa-3f-82-af-1e-88-9d-27"), &(state.monitor.id)); // State Monitoring
+  state.ble.sendCommandWithIntReply(F("AT+GATTADDCHAR=UUID128=85-7f-00-02-e2-ab-46-72-aa-3f-82-af-1e-88-9d-27, PROPERTIES=0x13, MIN_LEN=1, MAX_LEN=1, VALUE=0x0"), &(state.monitor.stripStateCharId));
+  state.ble.sendCommandWithIntReply(F("AT+GATTADDCHAR=UUID128=85-7f-00-03-e2-ab-46-72-aa-3f-82-af-1e-88-9d-27, PROPERTIES=0x13, MIN_LEN=3, MAX_LEN=3, VALUE=0x000"), &(state.monitor.rainbowStateCharId));
+  state.ble.sendCommandWithIntReply(F("AT+GATTADDCHAR=UUID128=85-7f-00-04-e2-ab-46-72-aa-3f-82-af-1e-88-9d-27, PROPERTIES=0x13, MIN_LEN=5, MAX_LEN=5, VALUE=0x00000"), &(state.monitor.pingPongStateCharId));
+  state.ble.sendCommandWithIntReply(F("AT+GATTADDCHAR=UUID128=85-7f-00-05-e2-ab-46-72-aa-3f-82-af-1e-88-9d-27, PROPERTIES=0x13, MIN_LEN=5, MAX_LEN=5, VALUE=0x00000"), &(state.monitor.breathingStateCharId));
+
+  // Needed for the above service to register.
+  state.ble.reset();
+
+  state.ble.sendCommandCheckOK(F("AT+GAPDEVNAME=Bed Controller"));
   state.ble.echo(false);
   state.ble.verbose(false);
   state.ble.setMode(BLUEFRUIT_MODE_DATA);
@@ -67,11 +76,13 @@ void loop() {
   processPingPong();
   processRainbow();
 
+  boolean stripWasToggled = false;
   for (uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
     boolean forceUpdate = false;
     if (state.buttonStateChanged.get(stripIndex)) {
       state.stripDirty.set(stripIndex, true);
       forceUpdate = true;
+      stripWasToggled = true;
       if (state.rfState.get(stripIndex) ^ state.bleState.get(stripIndex)) {
         state.strips[stripIndex].setBrightness(255);
       } else {
@@ -84,12 +95,14 @@ void loop() {
         state.strips[stripIndex].setPixelColor(ledIndex, state.stripColors[stripIndex][ledIndex].getConverted());
       }
       state.lostMicros += state.strips[stripIndex].numPixels() * 27;
-      if (stripIndex == RIGHT_POST_ID) {
-        Serial.println("Trying to update right post");
-      }
       state.strips[stripIndex].show();
       state.stripDirty.set(stripIndex, false);
     }
+  }
+
+  if (stripWasToggled) {
+    
+    updateCharacteristic(&state, state.monitor.stripStateCharId, new byte[1]{state.rfState.state ^ state.bleState.state});
   }
 }
 
@@ -155,7 +168,7 @@ void processBreathing() {
       state.breathing.start = holdValue;
       state.breathing.currentTime = 0;
     } else {
-      double currentPosition = easing_cosine((double)state.breathing.currentTime / (double)state.breathing.duration);
+      double currentPosition = ease(state.breathing.easing, (double)state.breathing.currentTime / (double)state.breathing.duration);
       newBrightness = lerp(currentPosition, state.breathing.start, state.breathing.end);
     }
     
@@ -192,16 +205,16 @@ void processPingPong() {
       }
     }
 
-    uint8_t dist = distance(previousPixel, state.pingpong.pixel);
+    uint8_t dist = distance(previousPixel, state.pingpong.pixel) + 1;
     uint32_t blankColor = state.pingpong.dark ? 0 : state.pingpong.falloff[state.pingpong.spread - 1];
     for (uint8_t blankSpread = 0; blankSpread < dist; blankSpread++) {
       setBothSidesPixelOpacity(previousPixel + (state.pingpong.spread + blankSpread), blankColor);
       setBothSidesPixelOpacity(previousPixel - (state.pingpong.spread + blankSpread), blankColor);
     }
     
-    for(uint8_t dist = 0; dist < state.pingpong.spread; dist++) {
-      setBothSidesPixelOpacity(state.pingpong.pixel + dist, state.pingpong.falloff[dist]);
-      setBothSidesPixelOpacity(state.pingpong.pixel - dist, state.pingpong.falloff[dist]);
+    for(uint8_t spread = 0; spread < state.pingpong.spread; spread++) {
+      setBothSidesPixelOpacity(state.pingpong.pixel + spread, state.pingpong.falloff[spread]);
+      setBothSidesPixelOpacity(state.pingpong.pixel - spread, state.pingpong.falloff[spread]);
     }
   }
 }
@@ -254,8 +267,9 @@ void processBLEBuffer() {
       case 'r': processRainbowCommand(&state); break;
       case 'c': processColorCommand(&state); break;
       case 'i': processIntensityCommand(&state); break;
+      case 't': processToggleCommand(&state); break;
+      case 'a': processAllOnOffCommand(&state); break;
       case 'k': processKillCommand(&state); break;
-      case 'o': processOnOffCommand(&state); break;
     }
   }
 }

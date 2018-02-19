@@ -1,6 +1,6 @@
 #include "state.h"
-#include "string.h"
 #include "mathLib.h"
+#include "commandParser.h"
 
 void readPacket(State *state) 
 {
@@ -10,6 +10,20 @@ void readPacket(State *state)
     char c = state->ble.read();
     state->packetBuffer[i] = c;
   }
+}
+
+void updateCharacteristic(State *state, int32_t charId, byte* newVal) {
+  String s = GATTCHAR;
+  s += charId;
+  s += ',';
+  s += String((char*)newVal);
+  char command[s.length() + 1];
+  s.toCharArray(command, s.length()+1);
+
+  state->ble.setMode(BLUEFRUIT_MODE_COMMAND);
+  state->ble.println(command);
+  state->ble.setMode(BLUEFRUIT_MODE_DATA);
+//  state->ble.sendCommandCheckOK(command);
 }
 
 /**
@@ -28,10 +42,15 @@ void processBreathingCommand(State *state) {
     state->breathing.easing = state->packetBuffer[5];
 
     // Setting Breathing overrides PingPong command
-    state->pingpong.active = false;
+    if (state->pingpong.active) {
+      state->pingpong.active = false;
+      updatePingPongCharacteristic(state);
+    }
   } else {
     state->breathing.active = false;
   }
+
+  updateBreathingCharacteristic(state);
 }
 
 /**
@@ -46,10 +65,9 @@ void processPingPongCommand(State *state) {
   if (state->packetBuffer[1] == '+') {
     state->pingpong.active = true;
     state->pingpong.spread = state->packetBuffer[2];
-    state->pingpong.pixel = state->pingpong.spread;
-    state->pingpong.directionUp = false;
     state->pingpong.duration = state->packetBuffer[3] * 1000L * 1000L;
     state->pingpong.easing = state->packetBuffer[4];
+    state->pingpong.directionUp = false;
 
     state->pingpong.dark = false;
     uint8_t optionsPointer = 5;
@@ -78,10 +96,15 @@ void processPingPongCommand(State *state) {
     }
     
     // Setting PingPong overrides Breathing command
-    state->breathing.active = false;
+    if (state->breathing.active) {
+      state->breathing.active = false;
+      updateBreathingCharacteristic(state);
+    }
   } else {
     state->pingpong.active = false;
   }
+  
+  updatePingPongCharacteristic(state);
 }
 
 /**
@@ -97,6 +120,8 @@ void processRainbowCommand(State *state) {
   } else {
     state->rainbow.active = false;
   }
+  
+  updateRainbowCharacteristic(state);
 }
 
 /**
@@ -118,7 +143,10 @@ void processColorCommand(State *state) {
   }
   
   // Setting Color overrides Rainbow command
-  state->pingpong.active = false;
+  if (state->rainbow.active) {
+    state->rainbow.active = false;
+    updateRainbowCharacteristic(state);
+  }
 }
 
 /**
@@ -135,24 +163,101 @@ void processIntensityCommand(State *state) {
   }
 
   // Setting Intensity overrides PingPong and Breathing command
-  state->pingpong.active = false;
-  state->breathing.active = false;
+  if (state->pingpong.active) {
+    state->pingpong.active = false;
+    updatePingPongCharacteristic(state);
+    
+  }
+  if (state->breathing.active) {
+    state->breathing.active = false;
+    updateBreathingCharacteristic(state);
+  }
 }
 
+/**
+ * t[0-3][+-]
+ */
+void processToggleCommand(State *state) {
+  byte strip = state->packetBuffer[1];
+  boolean newState = state->packetBuffer[2] == '+';
+  boolean currentState = state->rfState.get(strip) ^ state->bleState.get(strip);
+  
+  if (currentState != newState) {
+    state->bleState.toggle(strip);
+      state->buttonStateChanged.set(strip, true);
+  }
+}
+
+/**
+ * a[+-]
+ */
+void processAllOnOffCommand(State *state) {
+  boolean newState = state->packetBuffer[1] == '+';
+  
+  for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
+    boolean currentState = state->rfState.get(stripIndex) ^ state->bleState.get(stripIndex);
+    
+    if (currentState != newState) {
+      state->bleState.toggle(stripIndex);
+      state->buttonStateChanged.set(stripIndex, true);
+    }
+  }
+}
+
+/**
+ * k
+ */
 void processKillCommand(State *state) {
   asm volatile ("  jmp 0"); 
 }
 
-void processOnOffCommand(State *state) {
-  boolean anyOn = false;
-  for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-    anyOn |= state->rfState.get(stripIndex) ^ state->bleState.get(stripIndex);
-  }
+/**
+ * State: [5]
+ * [0] active
+ * [1] spread
+ * [2] duration
+ * [3] dark
+ * [4] easing
+ */
+void updatePingPongCharacteristic(State *state) {
+  byte command[5];
+  command[0] = state->pingpong.active;
+  command[1] = state->pingpong.spread;
+  command[2] = (byte) (state->pingpong.duration / (1000 * 1000));
+  command[3] = state->pingpong.dark;
+  command[4] = state->pingpong.easing;
+  updateCharacteristic(state, state->monitor.pingPongStateCharId, command);
+}
 
-  boolean turnOn = !anyOn;
-  for(uint16_t stripIndex = 0; stripIndex < NUM_STRIPS; stripIndex++) {
-    state->bleState.set(stripIndex, state->rfState.get(stripIndex) ^ turnOn);
-    state->buttonStateChanged.set(stripIndex, true);
-  }
+/**
+ * State: [5]
+ * [0] active
+ * [1] startIntensity
+ * [2] endIntensity
+ * [3] duration
+ * [4] easing
+ */
+void updateBreathingCharacteristic(State *state) {
+  byte command[5];
+  command[0] = state->breathing.active;
+  command[1] = state->breathing.start;
+  command[2] = state->breathing.end;
+  command[3] = (byte) (state->breathing.duration / (1000 * 1000));
+  command[4] = state->breathing.easing;
+  updateCharacteristic(state, state->monitor.breathingStateCharId, command);
+}
+
+/**
+ * State: [3]
+ * [0] active
+ * [1] repeat
+ * [2] duration
+ */
+void updateRainbowCharacteristic(State *state) {
+  byte command[5];
+  command[0] = state->rainbow.active;
+  command[1] = state->rainbow.repeat;
+  command[2] = (byte) (state->rainbow.duration / (1000 * 1000));
+  updateCharacteristic(state, state->monitor.rainbowStateCharId, command);
 }
 

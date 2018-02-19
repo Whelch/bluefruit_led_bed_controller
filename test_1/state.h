@@ -88,14 +88,27 @@ struct BitState {
   void set(uint8_t index, boolean newState) {
     bitWrite(state, index, newState);
   }
+
+  void toggle(uint8_t index) {
+    state ^= 1 << index;
+  }
   
   boolean get(uint8_t index) {
     return bitRead(state, index);
   }
 };
 
+struct Monitor {
+  int32_t id;
+  int32_t stripStateCharId;
+  int32_t rainbowStateCharId;
+  int32_t pingPongStateCharId;
+  int32_t breathingStateCharId;
+};
+
 struct State {
   Adafruit_BluefruitLE_SPI ble = Adafruit_BluefruitLE_SPI(BLUEFRUIT_SPI_CS, BLUEFRUIT_SPI_IRQ, BLUEFRUIT_SPI_RST);
+  Monitor monitor;
 
   BitState rfState;
   BitState bleState;

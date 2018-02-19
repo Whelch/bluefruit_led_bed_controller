@@ -59,6 +59,7 @@
 
 
 #define COMMAND_SEPARATOR " -\n:="
+#define GATTCHAR "AT+GATTCHAR="
 
 /************************************************************************************************
  * Main File Constants
